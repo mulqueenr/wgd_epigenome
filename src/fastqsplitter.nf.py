@@ -29,7 +29,7 @@ platform=args.platform
 
 #accept comma separated list for plate args
 if ',' in args.plate:
-        plate=[args.plate.split(',')]
+        plate=args.plate.split(',')
 else:
         plate=[args.plate]
 
