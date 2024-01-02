@@ -222,7 +222,6 @@ process CNV_CLONES {
 
 	input:
 		path sc_dedup_bams
-		path bins_bed
 	output:
 		path("*bam_list*txt")
 	script:
@@ -272,7 +271,7 @@ workflow {
 		| MULTIQC
 		
 	// CALL CNVs AND GENERATE CLONE LISTS
-		clone_lists = CNV_CLONES(bam_in, bins_bed) \
+		clone_lists = CNV_CLONES(bam_in) \
 		| flatten
 }
 

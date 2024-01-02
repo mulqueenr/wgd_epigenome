@@ -27,8 +27,8 @@ plotHeatmap(data, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
 dev.off()
 
 # Remove cells marked as low-quality and/or aneuploid from the copykit object
-data <- data[,SummarizedExperiment::colData(data)$outlier == FALSE]
-data <- data[,SummarizedExperiment::colData(data)$is_aneuploid == TRUE]
+#data <- data[,SummarizedExperiment::colData(data)$outlier == FALSE]
+#data <- data[,SummarizedExperiment::colData(data)$is_aneuploid == TRUE]
 
 
 # kNN smooth profiles

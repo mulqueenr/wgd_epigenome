@@ -33,6 +33,7 @@ if ',' in args.plate:
 else:
         plate=[args.plate]
 
+#on nextseq 2000 i7 is read first
 #set up plate
 if platform == "icell8":
         n7="/volumes/seq/projects/wgd/ref/wafer_v2_N7_72.txt" #copied to home directory as backup
@@ -53,11 +54,11 @@ elif platform == "echo":
                         plate_i7.append([i.strip() for i in idx.loc[(idx['idx'] == 'i7') & (idx['set'] == 1)]['idx_seq']])
                         plate_i5.append([i.strip() for i in idx.loc[(idx['idx'] == 'i5') & (idx['set'] == 1)]['idx_seq']])
                 if plate_number == "2":
-                        plate_i7.append([i.strip() for i in idx.loc[(idx['idx'] == 'i7') & (idx['set'] == 2)]['idx_seq']])
-                        plate_i5.append([i.strip() for i in idx.loc[(idx['idx'] == 'i5') & (idx['set'] == 1)]['idx_seq']])
-                if plate_number == "3":
                         plate_i7.append([i.strip() for i in idx.loc[(idx['idx'] == 'i7') & (idx['set'] == 1)]['idx_seq']])
                         plate_i5.append([i.strip() for i in idx.loc[(idx['idx'] == 'i5') & (idx['set'] == 2)]['idx_seq']])
+                if plate_number == "3":
+                        plate_i7.append([i.strip() for i in idx.loc[(idx['idx'] == 'i7') & (idx['set'] == 2)]['idx_seq']])
+                        plate_i5.append([i.strip() for i in idx.loc[(idx['idx'] == 'i5') & (idx['set'] == 1)]['idx_seq']])
                 if plate_number == "4":
                         plate_i7.append([i.strip() for i in idx.loc[(idx['idx'] == 'i7') & (idx['set'] == 2)]['idx_seq']])
                         plate_i5.append([i.strip() for i in idx.loc[(idx['idx'] == 'i5') & (idx['set'] == 2)]['idx_seq']])
