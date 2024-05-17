@@ -9,7 +9,7 @@ category: mdanderson
 ## Flow Cytometry data of WGD induction on 230606
 fcs files were transfered to
 ```bash
-/volumes/seq/projects/wgd/230606_MCF10A_+-P53_WGD/fcs_data
+/Volumes/seq/projects/wgd/231208_MCF10A_WGD_FACS/231208_WGD_Hoescht
 ```
 
 Installing ggcyto and flowCore for R analysis
@@ -28,7 +28,7 @@ library(patchwork)
 library(ComplexHeatmap)
 library(circlize)
 
-setwd("/Volumes/seq/projects/wgd/230606_MCF10A_+-P53_WGD/fcs_data")
+setwd("/Volumes/seq/projects/wgd/231208_MCF10A_WGD_FACS/231208_WGD_Hoescht")
 fcs.dir<-getwd()
 frames <- lapply(dir(fcs.dir, pattern="*.fcs" ,full.names=TRUE), read.FCS)
 frame_names<-basename(dir(fcs.dir, pattern="*.fcs" ,full.names=TRUE))

@@ -79,6 +79,10 @@ dat$ploidy_gate<-meta_apriori[row.names(dat@colData),]$ploidy_gate
 dat$treatment<-meta_apriori[row.names(dat@colData),]$treatment
 dat$treatment_gate<-paste(dat$treatment,dat$ploidy_gate,sep="_")
 
+
+dat$genotype<-"wt"
+colData(dat)[colData(dat)$plate %in% c("3","4"),]$genotype<-"p53ko"
+
 # Plot a copy number heatmap with clustering annotation
 pdf("subclone.heatmap.expanded.pdf")
 plotHeatmap(dat, label = c('treatment_gate','subclones',"plate","ploidy_gate","treatment"),group = 'treatment_gate',order="hclust",row_split="treatment")
@@ -93,9 +97,20 @@ dev.off()
 
 saveRDS(dat,"scCNA.rds")
 
+```
+Output for PERT
+```R
+library(copykit)
+library(ggplot2)
+library(reshape2)
+library(HMMcopy)
+setwd("/volumes/seq/projects/wgd/231228_RM_WGD_ACT")
+dat<-readRDS("scCNA.rds")
+
+
 #cell metadata
-out_meta<-as.data.frame(dat@colData[c("sample","plate","plate_row","plate_column","ploidy_gate","treatment","reads_assigned_bins")])
-colnames(out_meta)<-c("cell_id","plate","plate_row","plate_column","ploidy_gate","treatment","reads_assigned_bins")
+out_meta<-as.data.frame(dat@colData[c("sample","plate","plate_row","plate_column","ploidy_gate","treatment","genotype","reads_assigned_bins")])
+colnames(out_meta)<-c("cell_id","plate","plate_row","plate_column","ploidy_gate","treatment","genotype","reads_assigned_bins")
 
 #per bin info
 range_dat<-data.frame(chr=dat@rowRanges@seqnames,
@@ -113,20 +128,75 @@ out_dat_state<-melt(dat@assays@data$integer)
 out_dat_state$bin_id<-1:nrow(range_dat)
 out_dat<-cbind(out_dat,out_dat_state$value)
 
-colnames(out_dat)<-c("bin_id","chr","start","end","gc","cell_id","true_reads_norm","state")
+colnames(out_dat)<-c("bin_id","chr","start","end","gc","cell_id","reads","state")
 out_dat<-merge(out_dat,out_meta,by="cell_id")
-#normalize reads instead of raw bincounts?? seems like they are normalized
 
-cn_s=out_dat[out_dat$ploidy_gate=="aneuploid",]
-cn_g1=out_dat[out_dat$ploidy_gate=="diploid",]
+cn_s_p53ko=out_dat[(out_dat$genotype=="p53ko") & (out_dat$ploidy_gate=="aneuploid"),]
+cn_g1_p53ko=out_dat[(out_dat$genotype=="p53ko") & (out_dat$ploidy_gate=="diploid"),]
 
-write.table(cn_s,file="s_phase_cells_hmmcopy_trimmed.csv",sep=",")
-system("gzip s_phase_cells_hmmcopy_trimmed.csv")
+cn_s_wt=out_dat[(out_dat$genotype=="wt") & (out_dat$ploidy_gate=="aneuploid"),]
+cn_g1_wt=out_dat[(out_dat$genotype=="wt") & (out_dat$ploidy_gate=="diploid"),]
 
-write.table(cn_g1,file="g1_phase_cells_hmmcopy_trimmed.csv",sep=",")
-system("gzip g1_phase_cells_hmmcopy_trimmed.csv")
+write.table(cn_s_p53ko,file="~/s_phase_cells_p53ko_hmmcopy_trimmed.csv",sep=",")
+system("gzip -f ~/s_phase_cells_p53ko_hmmcopy_trimmed.csv")
 
+write.table(cn_g1_p53ko,file="~/g1_phase_cells_p53ko_hmmcopy_trimmed.csv",sep=",")
+system("gzip -f ~/g1_phase_cells_p53ko_hmmcopy_trimmed.csv")
+
+
+write.table(cn_s_wt,file="~/s_phase_cells_wt_hmmcopy_trimmed.csv",sep=",")
+system("gzip -f ~/s_phase_cells_wt_hmmcopy_trimmed.csv")
+
+write.table(cn_g1_wt,file="~/g1_phase_cells_wt_hmmcopy_trimmed.csv",sep=",")
+system("gzip -f ~/g1_phase_cells_wt_hmmcopy_trimmed.csv")
 ```
+More heatmap plots
+```R
+library(copykit)
+library(ggplot2)
+library(reshape2)
+library(HMMcopy)
+setwd("/volumes/seq/projects/wgd/231228_RM_WGD_ACT")
+meta_apriori<-read.csv("meta_apriori.csv")
+meta<-read.csv("meta.tsv",sep="\t")
+dat<-readRDS("scCNA.rds")
+
+
+dat <- calcInteger(dat, method = 'scquantum', assay = 'smoothed_bincounts')
+dat$genotype<-"wt"
+colData(dat)[colData(dat)$plate %in% c("3","4"),]$genotype<-"p53ko"
+
+met<-as.data.frame(colData(dat)) 
+met$treatment<-factor(met$treatment,levels=c("veh","ro","sp","mon_mpi","dcb"))
+
+plt<-ggplot(met,aes(y=ploidy,x=treatment,color=ploidy_score))+geom_jitter()+theme_minimal()+facet_wrap(.~genotype,ncol=1)
+ggsave(plt,file="test.pdf")
+
+pdf("/volumes/seq/projects/wgd/231228_RM_WGD_ACT/subclone.ploidy.pdf")
+plotMetrics(dat, metric = 'ploidy', label = 'ploidy_score')
+dev.off()
+
+dat$genotype<-"wt"
+colData(dat)[colData(dat)$plate %in% c("3","4"),]$genotype<-"p53ko"
+dat_sub<-dat[,colData(dat)$treatment %in% c("veh","ro")]
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.expanded.pdf")
+plotHeatmap(dat_sub, label = c("ploidy_gate","treatment","genotype"),group = 'ploidy_gate',order="hclust",row_split="genotype")
+dev.off()
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.expanded.pdf")
+plotHeatmap(dat, label = c("ploidy_gate","treatment","genotype"),group = 'ploidy_gate',order="hclust",row_split="genotype")
+dev.off()
+
+
+met<-as.data.frame(colData(dat))
+plt<-ggplot(met,aes(x=percentage_duplicates,y=log10(reads_assigned_bins),color=ploidy_gate,shape=treatment))+geom_point()+theme_minimal()
+ggsave(plt,file="test.pdf")
+```
+
+<!-- 
 Output data for PERT
 ```R
 library(copykit)
@@ -239,7 +309,7 @@ system("gzip -f ~/s_phase_cells_hmmcopy_trimmed.csv")
 
 write.table(cn_g1,file="~/g1_phase_cells_hmmcopy_trimmed.csv",sep=",")
 system("gzip -f ~/g1_phase_cells_hmmcopy_trimmed.csv")
-```
+``` -->
 
 Set up PERT
 https://github.com/shahcompbio/scdna_replication_tools
@@ -271,12 +341,12 @@ from scgenome import refgenome
 
 # load the simulated data from the paper
 # this corresponds to the data seen in simulated dataset P8.2 which has subclonal and cell-specific CNAs
-cn_s = pd.read_csv('/volumes/USR2/Ryan/tools/scdna_replication_tools/data/P8.2/s_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
-cn_g1 = pd.read_csv('/volumes/USR2/Ryan/tools/scdna_replication_tools/data/P8.2/g1_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
+#cn_s = pd.read_csv('/volumes/USR2/Ryan/tools/scdna_replication_tools/data/P8.2/s_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
+#cn_g1 = pd.read_csv('/volumes/USR2/Ryan/tools/scdna_replication_tools/data/P8.2/g1_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
 
 #load data
-cn_s = pd.read_csv('s_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
-cn_g1 = pd.read_csv('g1_phase_cells_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
+cn_s = pd.read_csv('~/s_phase_cells_p53ko_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
+cn_g1 = pd.read_csv('~/g1_phase_cells_p53ko_hmmcopy_trimmed.csv.gz', dtype={'chr': str})
 
 # add the replication columns for the G1-phase cells
 cn_g1['true_rep'] = 0.0
@@ -291,11 +361,9 @@ cn_s['true_G1_state']=0.0
 
 cn_g1['true_reads_norm']=(cn_g1['reads']/cn_g1['reads_assigned_bins'])*1000000
 cn_g1['clone_id']=cn_g1['treatment']
-cn_g1['cell_id']=cn_g1['sample']
 cn_g1['chr']=[i[3:] for i in cn_g1['chr']]
 cn_s['true_reads_norm']=(cn_s['reads']/cn_s['reads_assigned_bins'])*1000000
 cn_s['clone_id']=cn_s['treatment']
-cn_s['cell_id']=cn_s['sample']
 cn_s['chr']=[i[3:] for i in cn_s['chr']]
 
 # plot the true simulated data
@@ -355,13 +423,16 @@ cn_g_input.cell_id.unique().shape
 cn_s_input['library_id']=cn_s_input['treatment']+"_"+cn_s_input['ploidy_gate']
 cn_g_input['library_id']=cn_g_input['treatment']+"_"+cn_g_input['ploidy_gate']
 
+cn_s_input['copy']=cn_s_input['state']
+cn_g_input['copy']=cn_g_input['state']
+
 # temporarily remove columns that don't get used by PERT
-temp_cn_s = cn_s_input[['cell_id', 'chr', 'start', 'end', 'gc', 'state','copy', 'library_id', 'true_reads_norm']]
-temp_cn_g1 = cn_g_input[['cell_id', 'chr', 'start', 'end', 'gc', 'state', 'copy', 'library_id', 'true_reads_norm']]
+temp_cn_s = cn_s_input[['cell_id', 'chr', 'start', 'end', 'gc', 'state','copy','library_id', 'true_reads_norm']]
+temp_cn_g1 = cn_g_input[['cell_id', 'chr', 'start', 'end', 'gc', 'state', 'copy','library_id', 'true_reads_norm']]
 
 print('number of cells in S-phase: ', len(temp_cn_s['cell_id'].unique()))
-print('number of cells in G1-phase: ', len(temp_cn_g1['cell_id'].unique()))
-print('number of loci in S-phase: ', len(temp_cn_s[['chr', 'start']].drop_duplicates()))
+print('number of cells in G1-phase: ', len(temp_cn_s['cell_id'].unique()))
+print('number of loci in S-phase: ', len(temp_cn_g1[['chr', 'start']].drop_duplicates()))
 print('number of loci in G1-phase: ', len(temp_cn_g1[['chr', 'start']].drop_duplicates()))
 
 
