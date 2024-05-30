@@ -1,7 +1,7 @@
 
 #set up environment variables 
 export projDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
-export sif="/home/rmulqueen/singularity/scmetR.sif"
+export sif="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src/bcl2fastq2.sif"
 
 module load singularity 
 singularity shell \
@@ -9,9 +9,7 @@ singularity shell \
 $sif
 
 library(optparse)
-library(Biostrings)
 library(reshape2)
-library(ggplot2)
 option_list = list(
   make_option(c("-f", "--filter_file"), type="character", default=NULL, 
               help="*FilterFile.csv filter file from Takara icell8."),
@@ -71,34 +69,8 @@ data_file<-merge(data_file,sample_layout,by="SampleWell")
 data_file$Sample_name<-gsub(" ","_",data_file$Sample_name)
 
 data_file$CellID<-paste0("Cell_",1:nrow(data_file))
-
+write.table(data_file,file="cell_metadata.tsv",sep="\t",col.names=T,row.names=F,quote=F)
 #RNA Samplesheet:
-
-
-rna_out<-data.frame(
-  Lane="*",
-  Sample_ID=data_file$CellID,
-  Sample_Name=data_file$Sample_name,
-  Sample_Well=paste0("Row",data_file$Row,"_","Col",data_file$Col),
-  index=
-  index2=
-  )
-
-dna_out<-data.frame(
-  Lane="*",
-  Sample_ID=data_file$CellID,
-  Sample_Name=data_file$Sample_name,
-  Sample_Well=paste0("Row",data_file$Row,"_","Col",data_file$Col),
-  index=data_file$dna_i7in_idx,
-  index2=paste0(data_file$dna_i7out_idx,data_file$dna_i5_idx)
-  )
-rna<-data_file
-  echo "[Header],,,,,,,,
-  Investigator Name,Ryan,,,,,,,
-  Date,\$(date +'%d/%m/%Y'),,,,,,,
-  Workflow,GenerateFASTQ,,,,,,,
-  [Data],,,,,,,,
-  Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,index,index2,Sample_Project,Description" > SampleSheet.csv
 
 #bclfiles in 
 #/volumes/seq/flowcells/MDA/nextseq2000/2024/20240426_Ryan_231_wgdT0_DNA_RNA_ESO_P17_Chip1_DNA_RNA_reseq_P18_Chip2_DNA/240425_VH00219_582_AACFVYNHV
@@ -117,57 +89,14 @@ rna<-data_file
 Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,index,index2,Sample_Project,Description
 ,ArcDR_ESO_preTX_P17_C1,ArcDR_ESO_preTX_P17_C1,plate1,A1,CCGTTTGT,TAAGGCGAGCGATCTA,ArcDR_ESO_preTX_P17_C1,ArcDR_ESO_preTX_P17_C1
 
-fq_out="/volumes/seq/projects/wgd/240322_ARCDR_FIXED_WGDt0/fastq"
-runDir="/volumes/seq/flowcells/MDA/nextseq2000/2024/20240426_Ryan_231_wgdT0_DNA_RNA_ESO_P17_Chip1_DNA_RNA_reseq_P18_Chip2_DNA/240425_VH00219_582_AACFVYNHV"
-
-
-#Running RNA
-bcl2fastq \
---use-bases-mask=Y46,I8n18,I16,Y50 \
---create-fastq-for-index-reads \
---barcode-mismatches 0 \
--r 60 -p 60 -w 60 \
---no-lane-splitting \
--R $runDir \
--o $fq_out
-
-zcat Undetermined_S0_I1_001.fastq.gz | grep -E '^[ATGC]+$' | sort | uniq -c | sort -k1,1n
+fq_out="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/240505_RNADNA_WGD_t0/fastq"
+runDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/rundir/240425_VH00219_582_AACFVYNHV"
 
 #Running DNA
 bcl2fastq \
 --use-bases-mask=Y46,I34,I8,Y50 \
 --create-fastq-for-index-reads \
---barcode-mismatches 0 \
 -r 60 -p 60 -w 60 \
 --no-lane-splitting \
 -R $runDir \
 -o $fq_out
-
-
-
-//<Read Number="1" NumCycles="46" IsIndexedRead="N" IsReverseComplement="N"/>
-//<Read Number="2" NumCycles="34" IsIndexedRead="Y" IsReverseComplement="N"/> #pool barcode+icell8columnidx
-//<Read Number="3" NumCycles="16" IsIndexedRead="Y" IsReverseComplement="Y"/> #icell8rowidx
-//<Read Number="4" NumCycles="50" IsIndexedRead="N" IsReverseComplement="N"/>
-
-
-#--sample-sheet=$WPATH/SampleSheet.csv
-#dat$RNA_BC is true RNA barcodes for sample demultiplexing
-#RNA index2 (i7) MD_atacN714-792[column] [10bp]
-#RNA index1 (i5) DDR_PCR_P5_UDI8_V2 [pool] [8bp]
-
-#DNA:GTGATAGC
-
-
-#set up environment variables 
-export projDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
-export sif="/home/rmulqueen/singularity/scmetR.sif"
-
-module load singularity 
-singularity shell \
---bind ${projDir} \
-$sif
-
-/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/rundir/240425_VH00219_582_AACFVYNHV
-
-

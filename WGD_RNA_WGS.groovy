@@ -1,39 +1,19 @@
 nextflow.enable.dsl=2
-
-// Make samplesheet per cell, run bcl2fastq, process RNA via cellranger, process DNA via copykit
-
-//#RunParameters.xml #actual sequencing input, I'm guessing
-//    <Read1>46</Read1>
-//    <Index1>34</Index1>
-//    <Index2>8</Index2>
-//    <Read2>50</Read2>
-
-//#RunInfo_backup.xml #RNA?
-//<Reads>
-//<Read Number="1" NumCycles="46" IsIndexedRead="N" IsReverseComplement="N"/>
-//<Read Number="2" NumCycles="34" IsIndexedRead="Y" IsReverseComplement="N"/> #pool barcode+icell8columnidx
-//<Read Number="3" NumCycles="8" IsIndexedRead="Y" IsReverseComplement="Y"/> #icell8rowidx
-//<Read Number="4" NumCycles="50" IsIndexedRead="N" IsReverseComplement="N"/>
-
-//#RunInfo.xml #DNA?
-//<Read Number="1" NumCycles="46" IsIndexedRead="N" IsReverseComplement="N"/>
-//<Read Number="2" NumCycles="26" IsIndexedRead="Y" IsReverseComplement="N"/>
-//<Read Number="3" NumCycles="16" IsIndexedRead="Y" IsReverseComplement="Y"/>
-//<Read Number="4" NumCycles="50" IsIndexedRead="N" IsReverseComplement="N"/>
-
 // Reference files
-params.projectdir="/volumes/seq/projects/wgd/"
+params.projectdir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
 params.src_dir="${params.projectdir}/src/"
-params.wafar_cell_bc = "${params.src_dir}/Wafar_cell.csv"
-params.wdr_fix_cell_bc = "${params.src_dir}/WDR_FIX_cellBC.txt"
+params.ref_dir="${params.projectdir}/ref/"
 
 // Input parameters, user specified defaults
-params.sequencing_dir = "/volumes/seq/flowcells/MDA/nextseq2000/2024/20240426_Ryan_231_wgdT0_DNA_RNA_ESO_P17_Chip1_DNA_RNA_reseq_P18_Chip2_DNA/240425_VH00219_582_AACFVYNHV"
-params.icell8_filter="/volumes/lab/users/wet_lab/records/Navin_lab_projects/WGD/icell8/RNAWGS/240322_ARCDR_FIXED_WGDt0_141014C_scan2/141014-manual3_FilterFile.csv"
-params.icell8_data="/volumes/lab/users/wet_lab/records/Navin_lab_projects/WGD/icell8/RNAWGS/240322_ARCDR_FIXED_WGDt0_141014C_scan2/141014-2_WellList.TXT"
-params.out_dir="${params.projectdir}/240322_ARCDR_FIXED_WGDt0"
-params.sample_layout="${params.out_dir}/sample_layout.csv"
-params.bcl_dir="/volumes/seq/flowcells/MDA/nextseq2000/2024/20240426_Ryan_231_wgdT0_DNA_RNA_ESO_P17_Chip1_DNA_RNA_reseq_P18_Chip2_DNA/240425_VH00219_582_AACFVYNHV"
+params.sequencing_dir = "${params.projectdir}/rundir/240425_VH00219_582_AACFVYNHV"
+params.icell8_data="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/240505_RNADNA_WGD_t0/240322_ARCDR_FIXED_WGDt0_141014C_scan2/141014-manual3_reprocess_WellList.TXT"
+params.out_dir="${params.projectdir}/240505_RNADNA_WGD_t0"
+params.sample_layout="${params.out_dir}/sample_layout.txt"
+params.outname="WGD"
+params.dna_chip_primer="MD_N708_out"
+params.rna_chip_primer="DDR_PCR_p5_UDI8_V2"
+params.readcountfilter="100000"
+
 log.info """
 
 		================================================================
@@ -42,13 +22,15 @@ log.info """
 		================================================================
 		==Input==
 		Input Sequencing Dir : ${params.sequencing_dir}
-		Input icell8 Filter : ${params.icell8_filter}
-		Input icell8 Data : ${params.icell8_filter}
-		Input icell8 Sample Names : ${params.icell8_samples}
+		Input icell8 Data : ${params.icell8_data}
+		Input icell8 Sample Names : ${params.sample_layout}
+		Input icell8 DNA Chip Primer : ${params.dna_chip_primer}
+		Input icell8 RNA Chip Primer : ${params.rna_chip_primer}
 
 		==Params==
 		NF Working Dir : ${workflow.workDir}
 		Src directory : ${params.src_dir}
+		Read Count Filter (DNA): ${params.readcountfilter}
 
 		==Output==
 		Output Project Directory : ${params.projectdir}
@@ -56,28 +38,296 @@ log.info """
 
 """.stripIndent()
 
-
 //PREPROCESSING BLOCK
-process MAKE_SAMPLESHEET { 
-	publishDir "${params.out_dir}/preprocessing", mode: 'copy', overwrite: true
-	// Generate Samplesheet from simple listed samples and filter file.
-	// Use barcode whitelist from Rui Ye, original locations /volumes/USR1/ruiye/WDR_10XFIX/
+process BCL_TO_FASTQ  { 
+	//Generate Undetermined Fastq Files for Processing
+	containerOptions "--bind ${params.ref_dir}:/ref/"
+	cpus 50
+	label 'bcl2fastq'
 
 	input:
-	path wafar_cell_bc
-	path wdr_fix_cell_bc
-	path icell8_filter
-	path icell8_data
-	path sample_layout
-
+		path(runDir)
 	output:
-		path("SampleSheet.csv")
+		path("*.fastq.gz")
 	script:
 	"""
-	echo "[Header],,,,,,,,
-	Investigator Name,Ryan,,,,,,,
-	Date,\$(date +'%d/%m/%Y'),,,,,,,
-	Workflow,GenerateFASTQ,,,,,,,
-	[Data],,,,,,,,
-	Lane,Sample_ID,Sample_Name,Sample_Plate,Sample_Well,index,index2,Sample_Project,Description" > SampleSheet.csv
-	//g" >> SampleSheet.csvMPLESHEET | sed 's/\./_/g' | awk '{print ","$1","$1",plate1,A"NR","substr($3,1,8)","substr($3,10,16)","$1","$1}' | sed -e "s/
+	bcl2fastq \
+	--use-bases-mask=Y46,I34,I8,Y50 \
+	--create-fastq-for-index-reads \
+	-r 20 -p 10 -w 20 \
+	--no-lane-splitting \
+	-R ${runDir} \
+	-o .
+	"""
+}
+
+
+process DEMUX_FASTQ { 
+	//Assign fastq files to determined index pairs.
+	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
+	publishDir "${params.out_dir}", pattern:'metadata.csv', mode: 'copy', overwrite: true
+	cpus 50
+	label 'bcl2fastq'
+
+	input:
+		tuple path(read1), path(read2), path(idx1), path(idx2)
+		path(sample)
+		path(sample_layout)
+	output:
+		tuple path("${params.outname}.R1.DNA.fastq.gz"), path("${params.outname}.R2.DNA.fastq.gz")
+		tuple path("${params.outname}_S1_L001_R1_001.fastq.gz"), path("${params.outname}_S1_L001_R2_001.fastq.gz")
+
+	script:
+		"""
+		#chunk fastq to speed up processing
+		seqkit split2 ${read1} -p 50 -j ${task.cpus} -O . --by-part-prefix ${read1.simpleName}.chunk -e .gz 
+		seqkit split2 ${read2} -p 50 -j ${task.cpus} -O . --by-part-prefix ${read2.simpleName}.chunk -e .gz 
+		seqkit split2 ${idx1} -p 50 -j ${task.cpus} -O . --by-part-prefix ${idx1.simpleName}.chunk -e .gz 
+		seqkit split2 ${idx2} -p 50 -j ${task.cpus} -O . --by-part-prefix ${idx2.simpleName}.chunk -e .gz 
+
+		#run demultiplexing
+		demux() { 
+		python /src/fastqsplitter.wdrfixed.py \\
+		--fq1 Undetermined_S0_R1_001.chunk0\${1}.fastq.gz \\
+		--fq2 Undetermined_S0_R2_001.chunk0\${1}.fastq.gz  \\
+		--idx3 Undetermined_S0_I1_001.chunk0\${1}.fastq.gz  \\
+		--idx4 Undetermined_S0_I2_001.chunk0\${1}.fastq.gz \\
+		--samples ${sample} \\
+		--sample_layout ${sample_layout} \\
+		--dna_chip_primer ${params.dna_chip_primer} \\
+		--rna_chip_primer ${params.rna_chip_primer}
+
+		gzip *chunk0\${1}*fastq
+		}
+
+		export -f demux
+		parallel -j ${task.cpus} demux ::: \$(echo {01..50})
+
+		zcat *R1*DNA.barc.fastq.gz > ${params.outname}.R1.DNA.fastq.gz
+		zcat *R2*DNA.barc.fastq.gz > ${params.outname}.R2.DNA.fastq.gz
+		zcat *R1*RNA.barc.fastq.gz > ${params.outname}_S1_L001_R1_001.fastq.gz #have to follow naming convention for cellranger
+		zcat *R2*RNA.barc.fastq.gz > ${params.outname}_S1_L001_R2_001.fastq.gz 
+		"""
+}
+
+// DNA ALIGNMENT AND SPLITTING CELLS 
+process DNA_BWA_ALIGN {
+	//Map reads with BWA mem
+	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
+	cpus 50
+	label 'bcl2fastq'
+
+	input:
+		tuple path(dna_fq1), path(dna_fq2)
+		path bwa_index
+		val outname
+	output:
+		tuple val("${outname}"), path("${outname}.DNA.bam")
+	script:
+		def idxbase = bwa_index[0].baseName
+		"""
+		bwa mem \\
+		-t ${task.cpus} \\
+		${idxbase} \\
+		${dna_fq1} \\
+		${dna_fq2} \\
+		| samtools view -@ ${task.cpus} -b - > ${outname}.DNA.bam
+		"""
+}
+
+process DNA_SPLIT_BAM { 
+	// Generate a count per grouped bam and pass list.
+	//Simplified version of the scalebio met postprocessing function (accounts for only one bam)
+	cpus 50
+	label 'cnv'
+
+	input:
+		tuple val(outname), path(bam)
+	output:
+		path("*.sorted.bam"), optional: true
+	script:
+	"""
+	samtools view -@ ${task.cpus} ${bam} \\
+	| awk -v b=${bam} '{split(\$1,a,":"); print a[1],b}' \\
+	| sort \\
+	| uniq -c \\
+	| sort -k1,1n \\
+	| awk '\$1>${params.readcountfilter} {print \$0}' > readcount.tsv
+
+
+	split_bam() {
+	test=\$1
+	idx=\$(echo \$test | cut -d \' \' -f 2 )
+	bam=\$(echo \$test | cut -d \' \' -f 3)
+
+	((samtools view -H \$bam) && (samtools view \$bam | awk -v i=\$idx \'{split(\$1,a,\":\"); if(a[1]==i) print \$0}\')) \\
+	| samtools view -bS - \\
+	| samtools sort -T . -O BAM -o \${idx}.sorted.bam - 
+	}
+    
+    export -f split_bam
+	parallel -j ${task.cpus} -a readcount.tsv split_bam 
+    """
+}
+
+process DNA_BAM_MARKDUP {
+	//Fix mates, sort and mark duplicates in bam
+	publishDir "${params.out_dir}/dna_data/cells", mode: 'copy'
+	label 'cnv'
+
+	input:
+		path bam
+	output:
+		path("*bbrd.bam")
+	script:
+	"""
+	samtools sort -n -o - ${bam} \\
+	| samtools fixmate -m - - \\
+	| samtools sort -T . -o - - \\
+	| samtools markdup -s - ${bam.baseName}.bbrd.bam 2> ${bam.baseName}.rmdup.stats.txt
+	"""
+}
+
+
+// CNV PROFILING 
+process DNA_CNV_CLONES {
+	//Run CopyKit and output list of bam files by clones
+	containerOptions "--bind ${params.src_dir}:/src/"
+	publishDir "${params.out_dir}/dna_data", mode: 'copy', pattern: "*"
+	cpus 50
+	label 'cnv'
+
+	input:
+		path sc_sorted_bam
+	output:
+		path("*rds")
+	script:
+		"""
+		Rscript /src/copykit_run.R \\
+		-i "." \\
+		-c ${task.cpus}
+		"""
+}
+
+// RNA PROCESSING
+process RNA_CELLRANGER {
+	//Run Cellranger on flex rna output
+	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
+	publishDir "${params.out_dir}/rna_data", mode: 'copy', pattern: "*"
+	cpus 50
+	label 'cellranger'
+
+	input:
+		tuple path(rna_fq1),path(rna_fq2)
+	output:
+		path("*")
+	script:
+	"""
+	echo \"""[gene-expression]
+	reference,/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0
+	probe-set,/ref/Chromium_Human_Transcriptome_Probe_Set_v1.0_GRCh38-2020-A.csv
+	create-bam,true
+	r1-length,28
+	chemistry,SFRP
+
+	[libraries]
+	fastq_id,fastqs,feature_types
+	WGD,\$PWD,Gene Expression\""" > sample.csv
+
+	cellranger multi \\
+	--id=WGD \\
+	--csv=./sample.csv \\
+	--localcores ${task.cpus}
+	"""
+}
+
+workflow {
+	// SETTING UP VARIABLES
+		bwa_index = file("${params.ref_dir}/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa{,.amb,.ann,.bwt,.pac,.sa}" )
+		def fasta_ref = Channel.value(params.ref_dir)
+		def outname = Channel.value(params.outname)
+		def icell8_data= Channel.fromPath(params.icell8_data)
+		def sample_layout= Channel.fromPath(params.sample_layout)
+
+	// BCL TO FASTQ PIPELINE 
+		fq = Channel.fromPath(params.sequencing_dir) | BCL_TO_FASTQ
+		(dna_fq, rna_fq) = DEMUX_FASTQ(fq,icell8_data,sample_layout)
+
+	// DNA ALIGNMENT AND SPLITTING CELLS AND CNV CALLING
+		clone_lists  = DNA_BWA_ALIGN(dna_fq, bwa_index, outname) \
+		| DNA_SPLIT_BAM \
+		| flatten
+		| DNA_BAM_MARKDUP \
+		| flatten \
+		| collect \
+		| DNA_CNV_CLONES
+
+	//RNA PROCESSING VIA CELLRANGER
+		RNA_CELLRANGER(rna_fq)
+	
+}
+
+/*
+bsub -Is -W 36:00 -q long -n 10 -M 100 -R rusage[mem=100] /bin/bash
+
+sif="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src/copykit.sif"
+
+module load singularity
+
+singularity shell \
+--bind /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/ \
+--bind /rsrch4/scratch/genetics/rmulqueen \
+--bind /rsrch4/scratch/genetics/rmulqueen/wgd_work \
+--bind /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src:/src/ \
+$sif 
+
+cd /rsrch4/scratch/genetics/rmulqueen/wgd_work/a6/7e935b
+
+
+*/
+
+
+/*
+DEPROCATED FUNCTIONS
+process DNA_SPLIT_BAM_BY_READNAME {
+	//Split bam file by read names
+	label 'cnv'
+
+	input:
+		tuple val(outname), path(bam)
+	output:
+		path("*sam")
+
+	script:
+	"""
+	samtools view ${bam} \\
+	| awk 'OFS="\\t" {split(\$1,a,":"); print \$0,"XM:Z:"a[1] > a[1]".${outname}.DNA.sam"}'
+	"""
+}
+// CONVERT TO BAMS AND RUN QC 
+process DNA_SAM_TO_BAM_CONVERT {
+	//Convert sam to bam and headers on single cell bams
+	//Hard filters to cells with greater than at least 100k reads.
+	label 'cnv'
+	containerOptions "--bind ${params.ref_dir}:/ref/"
+
+	input:
+		path(sc_sams)
+		val fasta_ref
+	output:
+		path("*.sc.bam"), optional: true
+
+	script:
+	"""
+	if [[ \$(wc -l < ${sc_sams}) -ge 100000 ]]; then
+	samtools view -bT \\
+	/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa \\
+	${sc_sams} \\
+	| samtools sort -o ${sc_sams.baseName}.sc.bam - 
+	fi
+	"""
+}
+*/
+
+
+
