@@ -287,47 +287,5 @@ cd /rsrch4/scratch/genetics/rmulqueen/wgd_work/a6/7e935b
 */
 
 
-/*
-DEPROCATED FUNCTIONS
-process DNA_SPLIT_BAM_BY_READNAME {
-	//Split bam file by read names
-	label 'cnv'
-
-	input:
-		tuple val(outname), path(bam)
-	output:
-		path("*sam")
-
-	script:
-	"""
-	samtools view ${bam} \\
-	| awk 'OFS="\\t" {split(\$1,a,":"); print \$0,"XM:Z:"a[1] > a[1]".${outname}.DNA.sam"}'
-	"""
-}
-// CONVERT TO BAMS AND RUN QC 
-process DNA_SAM_TO_BAM_CONVERT {
-	//Convert sam to bam and headers on single cell bams
-	//Hard filters to cells with greater than at least 100k reads.
-	label 'cnv'
-	containerOptions "--bind ${params.ref_dir}:/ref/"
-
-	input:
-		path(sc_sams)
-		val fasta_ref
-	output:
-		path("*.sc.bam"), optional: true
-
-	script:
-	"""
-	if [[ \$(wc -l < ${sc_sams}) -ge 100000 ]]; then
-	samtools view -bT \\
-	/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa \\
-	${sc_sams} \\
-	| samtools sort -o ${sc_sams.baseName}.sc.bam - 
-	fi
-	"""
-}
-*/
-
 
 

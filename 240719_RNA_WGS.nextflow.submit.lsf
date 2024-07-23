@@ -1,0 +1,37 @@
+#BSUB -W 24:00
+#BSUB -q e80medium
+#BSUB -n 70
+#BSUB -M 800
+#BSUB -R rusage[mem=800]
+#BSUB -o /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/240505_RNADNA_WGD_t0/%J_processing.log
+#BSUB -cwd /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/240505_RNADNA_WGD_t0
+#BSUB -u RMulqueen@mdanderson.org
+#BSUB -J WGD_RNA_WGS
+
+#load modules
+module load nextflow/23.04.3
+
+#set up environment variables 
+export SCRATCH="/rsrch4/scratch/genetics/rmulqueen"
+export projDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
+export srcDir="${projDir}/src"
+export refDir="${projDir}/ref"
+export runDir="${projDir}/rundir/240425_VH00219_582_AACFVYNHV" #change this
+export icell8_data="${projDir}/240505_RNADNA_WGD_t0/240322_ARCDR_FIXED_WGDt0_141014C_scan2/141014-manual3_reprocess_WellList.TXT" #change this
+
+export outDir="${projDir}/240717_RNADNA_WGD_t18"
+export sample_layout="${outDir}/sample_layout.txt" #copy this
+
+mkdir -p ${SCRATCH}/wgd_work 
+
+#call nextflow
+nextflow ${srcDir}/WGD_RNA_WGS.groovy \
+--projectdir $projDir \
+--sequencing_dir $runDir \
+--icell8_data $icell8_data \
+--out_dir $outDir \
+--sample_layout $sample_layout \
+--dna_chip_primer MD_N705_out \
+--rna_chip_primer DDR_PCR_p5_UDI4_V2 \
+-w ${SCRATCH}/wgd_work \
+-resume
