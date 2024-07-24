@@ -1,3 +1,13 @@
+#module load singularity
+#proj_dir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
+#singularity shell \
+#--bind ${proj_dir}/ref:/ref \
+#--bind ${proj_dir}/src:/src \
+#--bind /rsrch4/scratch/genetics/rmulqueen/ \
+#--bind $proj_dir \
+#${proj_dir}/src/bcl2fastq2.sif
+
+
 import gzip
 from Bio import SeqIO
 import sys
@@ -6,14 +16,14 @@ from Bio.Seq import Seq
 import pandas as pd
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument('--fq1')
-parser.add_argument('--fq2')
-parser.add_argument('--idx3')
-parser.add_argument('--idx4')
-parser.add_argument('--samples')
-parser.add_argument('--sample_layout')
-parser.add_argument('--dna_chip_primer',default="MD_N708_out")
-parser.add_argument('--rna_chip_primer',default="DDR_PCR_p5_UDI8_V2")
+parser.add_argument('--fq1',default="Undetermined_S0_R1_001.chunk050.fastq.gz")
+parser.add_argument('--fq2',default="Undetermined_S0_R2_001.chunk050.fastq.gz")
+parser.add_argument('--idx3',default="Undetermined_S0_I1_001.chunk050.fastq.gz")
+parser.add_argument('--idx4',default="Undetermined_S0_I2_001.chunk050.fastq.gz")
+parser.add_argument('--samples',default="./141436_secondscan_WellList.TXT")
+parser.add_argument('--sample_layout',default="./sample_layout.txt")
+parser.add_argument('--dna_chip_primer',default="MD_N705_out")
+parser.add_argument('--rna_chip_primer',default="DDR_PCR_p5_UDI4_v2")
 
 args = parser.parse_args()
 
@@ -35,11 +45,19 @@ zless Undetermined_S0_I2_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | s
 zless Undetermined_S0_R1_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
         #DNA Ignore
         #RNA atacS## i5 (8bp) #chip row
+
+#singularity call:
+projDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/"
+singularity shell \
+--bind ${projDir}/src:/src \
+--bind ${projDir}/ref:/ref \
+${projDir}/src/bcl2fastq2.sif
 """
 
 
 # TO ADD IN FUTURE USE CASES #If no samplesheet given, just try everything,
 # TO ADD IN FUTURE USE CASES #Set up for proper reverse complementing for different sequencers
+
 #DNA                
 DNA_i7_chip_col="/ref/wafer_v2_multichip_N7_72.txt" #REVCOMP of 1-8bp in I1
 DNA_i7_chip_col=pd.read_table(DNA_i7_chip_col)
@@ -72,7 +90,7 @@ sample=pd.read_table(args.samples)
 
 #Merge sample layout to metadata
 sample_layout=pd.read_table(args.sample_layout,sep="\t")
-sample=pd.merge(sample,sample_layout,left_on='Source well',right_on='Well')
+sample=pd.merge(sample,sample_layout,left_on='SampleWell',right_on='Well')
 sample=pd.merge(sample,DNA_i5_chip_row,left_on='Row',right_on='Row_DNA')
 sample=pd.merge(sample,DNA_i7_chip_col,left_on='Col',right_on='Col_DNA',suffixes=("_i5","_i7"))
 sample=pd.merge(sample,RNA_i5_chip_row,left_on='Row',right_on='Row_RNA')
@@ -135,8 +153,5 @@ with gzip.open(fq1, "rt") as handle1, \
 
 
 sample.to_csv('metadata.csv')
-
-
-/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/240505_RNADNA_WGD_t0/240322_ARCDR_FIXED_WGDt0_141014C_scan2/141014-manual3_reprocess_WellList.TXT
 
 

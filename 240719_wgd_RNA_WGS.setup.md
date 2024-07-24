@@ -1,7 +1,7 @@
 Transfer data from geo onto seadragon
 
 ```bash
-bsub -Is -W 6:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
+bsub -Is -W 6:00 -q interactive -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
 ```
 
 Use SFTP to get run data
@@ -43,10 +43,10 @@ export projDir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
 export srcDir="${projDir}/src"
 export refDir="${projDir}/ref"
 export runDir="${projDir}/rundir/20240720_spDNA_BCIS41T_CHip1_TArgetDR_test2_55_61degree_Ryan_ArcDR_2nd_ECIS61T_BCIS120T_cDNA/" #change this
-export icell8_data="${projDir}/240515_RNADNA_WGD_t18/240515_WDR_Fixed_WGDt18d/2024.05.15.14.59-141436/141436_secondscan_WellList.TXT" #change this
+export icell8_data="${projDir}/240515_RNADNA_WGD_t18/240515_WDR_Fixed_WGDt18d/2024.05.15.14.59-141436/141436_secondscan_WellList.TXT"
 
 export outDir="${projDir}/240515_RNADNA_WGD_t18"
-export sample_layout="${outDir}/sample_layout.txt" #copy this
+export sample_layout="${outDir}/sample_layout.txt"
 
 mkdir -p ${SCRATCH}/wgd_work 
 
@@ -58,7 +58,7 @@ nextflow ${srcDir}/WGD_RNA_WGS.groovy \
 --out_dir $outDir \
 --sample_layout $sample_layout \
 --dna_chip_primer MD_N705_out \
---rna_chip_primer DDR_PCR_p5_UDI4_V2 \
+--rna_chip_primer DDR_PCR_p5_UDI4_v2 \
 -w ${SCRATCH}/wgd_work \
 -resume
 ```
