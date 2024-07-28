@@ -1,12 +1,15 @@
-#module load singularity
-#proj_dir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
-#singularity shell \
-#--bind ${proj_dir}/ref:/ref \
-#--bind ${proj_dir}/src:/src \
-#--bind /rsrch4/scratch/genetics/rmulqueen/ \
-#--bind $proj_dir \
-#${proj_dir}/src/bcl2fastq2.sif
-
+"""
+bsub -Is -W 6:00 -q interactive -n 1 -M 16 -R rusage[mem=16] /bin/bash 
+module load singularity
+proj_dir="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd"
+singularity shell \
+--bind ${proj_dir}/ref:/ref \
+--bind ${proj_dir}/src:/src \
+--bind /rsrch4/scratch/genetics/rmulqueen/ \
+--bind $proj_dir \
+${proj_dir}/src/bcl2fastq2.sif
+"""
+#UPDATE THIS TO ALLOW FOR HAMMING DISTANCE IN THE FUTURE
 
 import gzip
 from Bio import SeqIO
@@ -30,18 +33,18 @@ args = parser.parse_args()
 
 """
 Break down of indexes in a Nextseq sequencing run of --use-bases-mask=Y46,I34,I8,Y50
-zless Undetermined_S0_I1_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
+zcat Undetermined_S0_I1_001.fastq.gz |head -n 1000 | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
         #DNA MD_atacN7##_in REVCOMP (8bp) #chip column
         #RNA ArcDR_RNA_RPI_atacN714 REVCOMP (8bp) #chip column
-zless Undetermined_S0_I1_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c9-27 | sort | uniq -c | sort -k1,1n
+zcat Undetermined_S0_I1_001.fastq.gz |head -n 1000 | grep -E "^[A|T|C|G|N]+$" | cut -c9-27 | sort | uniq -c | sort -k1,1n
         #DNA i7 Constant region REVCOMP (18bp)
         #RNA Ignore
-zless Undetermined_S0_I1_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c27- | sort | uniq -c | sort -k1,1n
+zcat Undetermined_S0_I1_001.fastq.gz |head -n 1000 | grep -E "^[A|T|C|G|N]+$" | cut -c27- | sort | uniq -c | sort -k1,1n
         #DNA i7 MD_N##_out (8bp) #chip pool
         #RNA Ignore
-zless Undetermined_S0_I2_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
-        #DNA i5 S5##/atac/Nflex (8bp) #chip row
-        #RNA DDR_PCR_p5_UDI#_v2 (8bp) #chip pool
+zcat Undetermined_S0_I2_001.fastq.gz |head -n 1000| grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
+        #DNA i5 S5##/atac/Nflex REVCOMP (8bp) #chip row
+        #RNA DDR_PCR_p5_UDI#_v2 REVCOMP (8bp) #chip pool
 zless Undetermined_S0_R1_001.fastq.gz | grep -E "^[A|T|C|G|N]+$" | cut -c1-8 | sort | uniq -c | sort -k1,1n
         #DNA Ignore
         #RNA atacS## i5 (8bp) #chip row
@@ -106,6 +109,9 @@ sample['col_idx_DNA']=[str(Seq(x).reverse_complement()) for x in sample['col_idx
 sample['row_idx_DNA']=[str(Seq(x).reverse_complement()) for x in sample['row_idx_DNA']] #REVCOMP of 1-8bp in I2
 sample['idx_chip_DNA']=[str(Seq(x).reverse_complement()) for x in sample['idx_chip_DNA']] #REVCOMP of 26-34bp in I1
 sample['col_idx_RNA']=[str(Seq(x).reverse_complement()) for x in sample['col_idx_RNA']] #REVCOMP of 1-8bp in I1
+#ADDED
+sample['idx_chip_RNA']=[str(Seq(x).reverse_complement()) for x in sample['idx_chip_RNA']] #REVCOMP of 26-34bp in I1
+
 
 fq1=args.fq1
 fq2=args.fq2
@@ -138,19 +144,17 @@ with gzip.open(fq1, "rt") as handle1, \
                         if len(sample_idx)==1:
                                 sample_idx=sample_idx[0]
                                 read_name="%s:%s_%s_%s" % (sample.loc[sample_idx,'cellID'], sample.loc[sample_idx,'idx_chip_DNA'], sample.loc[sample_idx,'col_idx_DNA'],sample.loc[sample_idx,'row_idx_DNA'])
-                                outfile_DNA_fq1.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq1, qual1))
-                                outfile_DNA_fq2.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq2, qual2))
+                                #outfile_DNA_fq1.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq1, qual1))
+                                #outfile_DNA_fq2.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq2, qual2))
                 if any(sample.idx_chip_RNA == seq4[:8]): #treat read as RNA
-                        rna_col=sample.index[sample.col_idx_RNA == seq3[:8]].tolist()
-                        rna_row=sample.index[sample.row_idx_RNA == seq1[:8]].tolist()
+                        rna_col=sample.index[sample.col_idx_RNA.str[:7]+"N" == seq3[:8]].tolist()
+                        rna_row=sample.index[sample.row_idx_RNA.str[:8] == seq1[:8]].tolist()
                         sample_idx=list(set(rna_col).intersection(rna_row))
                         if len(sample_idx)==1:
                                 sample_idx=sample_idx[0]
                                 read_name="%s:%s_%s_%s" % (sample.loc[sample_idx,'cellID'], sample.loc[sample_idx,'idx_chip_RNA'], sample.loc[sample_idx,'col_idx_RNA'],sample.loc[sample_idx,'row_idx_RNA'])
                                 outfile_RNA_fq1.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq1, qual1))
                                 outfile_RNA_fq2.write("@%s:%s\n%s\n+\n%s\n" % (read_name, i, seq2, qual2))
-
-
 
 sample.to_csv('metadata.csv')
 

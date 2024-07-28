@@ -6,7 +6,11 @@ library(optparse)
 option_list = list(
   make_option(c("-i", "--input_dir"), type="character", default=NULL, 
               help="List of single-cell bam files", metavar="character"),
-  make_option(c("-c", "--task_cpus"), type="integer", default=NULL, 
+  make_option(c("-m", "--metadata"), type="character", default="metadata.csv", 
+              help="Metadata file.", metavar="character"),
+  make_option(c("-o", "--outname"), type="character", default="WGD", 
+              help="Outname prefix for files.", metavar="character"),
+  make_option(c("-c", "--task_cpus"), type="integer", default=1, 
               help="Integer number of cpus")
 );
 
@@ -23,9 +27,12 @@ dat <- runVarbin(".",
     is_paired_end=TRUE)
 
 
-dat$cell_line<-unlist(lapply(strsplit(dat$sample,"[.]"),"[[",1))
+dat$cellID<-unlist(lapply(strsplit(dat$sample,"[.]"),"[[",1))
 dat$well<-unlist(lapply(strsplit(dat$sample,"[.]"),"[[",2))
 dat$idx<-unlist(lapply(strsplit(dat$sample,"[.]"),"[[",3))
+
+met<-read.csv(opt$metadata)
+dat@colData<-merge(dat@colData,met,by="cellID")
 
 # Mark euploid cells if they exist
 dat <- findAneuploidCells(dat)
@@ -47,11 +54,11 @@ k_clones<-findSuggestedK(dat) #16
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
 dat  <- findClusters(dat, k_superclones=k_clones@metadata$suggestedK, k_subclones=k_clones@metadata$suggestedK)#output from k_clones
-pdf("all_cells.subclone.umap.pdf")
+pdf(paste0(opt$outname,".subclone.umap.pdf"))
 plotUmap(dat, label = 'subclones')
 dev.off()
 
-pdf("all_cells.superclone.umap.pdf")
+pdf(paste0(opt$outname,".superclone.umap.pdf"))
 plotUmap(dat, label = 'superclones')
 dev.off()
 
@@ -62,12 +69,15 @@ dat <- runConsensusPhylo(dat)
 dat <- runPhylo(dat, metric = 'manhattan')
 
 # Plot a copy number heatmap with clustering annotation
-pdf("all_cells.subclone.heatmap.pdf")
+pdf(paste0(opt$outname,".subclone.heatmap.pdf"))
 plotHeatmap(dat, label = c('superclones','subclones','cell_line','reads_total'),order='hclust')
 dev.off()
 
-pdf("all_cells.subclone.phylo.pdf")
+pdf(paste0(opt$outname,".subclone.phylo.pdf"))
 plotPhylo(dat, label = 'subclones')
 dev.off()
 
-saveRDS(dat,file="all_cells.scCNA.rds")
+saveRDS(dat,file=paste0(opt$outname,".scCNA.rds"))
+
+met<-as.data.frame(dat@colData)
+write.table(met,file="dna.meta.tsv",quote=F,sep="\t",col.names=T,row.names=T)

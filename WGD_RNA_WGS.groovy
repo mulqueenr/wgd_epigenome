@@ -65,7 +65,8 @@ process BCL_TO_FASTQ  {
 process DEMUX_FASTQ { 
 	//Assign fastq files to determined index pairs.
 	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
-	publishDir "${params.out_dir}", pattern:'metadata.csv', mode: 'copy', overwrite: true
+	publishDir "${params.out_dir}", pattern:'*csv', mode: 'copy', overwrite: true
+
 	cpus 50
 	label 'bcl2fastq'
 
@@ -76,6 +77,7 @@ process DEMUX_FASTQ {
 	output:
 		tuple path("${params.outname}.R1.DNA.fastq.gz"), path("${params.outname}.R2.DNA.fastq.gz")
 		tuple path("${params.outname}_S1_L001_R1_001.fastq.gz"), path("${params.outname}_S1_L001_R2_001.fastq.gz")
+		path("metadata.csv")
 
 	script:
 		"""
@@ -200,50 +202,81 @@ process DNA_CNV_CLONES {
 	input:
 		path sc_sorted_bam
 	output:
-		path("*rds")
+		path("dna.meta.tsv")
 	script:
 		"""
 		Rscript /src/copykit_run.R \\
 		-i "." \\
+		-o ${params.outname} \\
 		-c ${task.cpus}
 		"""
 }
 
 // RNA PROCESSING
-process RNA_CELLRANGER {
-	//Run Cellranger on flex rna output
+process RNA_BWA_ALIGN {
+	//Map reads with BWA mem
 	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
-	publishDir "${params.out_dir}/rna_data", mode: 'copy', pattern: "*"
+	publishDir "${params.out_dir}/rna_data", mode: 'copy', pattern: "*RNA.bam"
+	publishDir "${params.out_dir}/rna_data", mode: 'copy', pattern: "*.gz"
+
 	cpus 50
-	label 'cellranger'
+	label 'bcl2fastq'
 
 	input:
-		tuple path(rna_fq1),path(rna_fq2)
+		tuple path(rna_fq1), path(rna_fq2)
+		path rna_bwa_index
+		val outname
 	output:
-		path("*")
+		tuple path("probe_count_matrix.mtx.gz"),path("features.tsv.gz"),path("barcodes.tsv.gz")
+		
 	script:
-	"""
-	echo \"""[gene-expression]
-	reference,/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0
-	probe-set,/ref/Chromium_Human_Transcriptome_Probe_Set_v1.0_GRCh38-2020-A.csv
-	create-bam,true
-	r1-length,28
-	chemistry,SFRP
+		def idxbase = rna_bwa_index[0].baseName
+		"""
+		bwa mem \\
+		-t ${task.cpus} \\
+		${idxbase} \\
+		${rna_fq1} \\
+		${rna_fq2} \\
+		| samtools view -@ ${task.cpus} -b - > ${outname}.RNA.bam
 
-	[libraries]
-	fastq_id,fastqs,feature_types
-	WGD,\$PWD,Gene Expression\""" > sample.csv
+		#pull read 1 from bam, count instances of cellid and probe id
+		samtools view -F 40 ${outname}.RNA.bam \\
+		| awk 'OFS="\t" {split(\$1,a,":"); split(\$3,b,"|");print a[1],b[2]}' \\
+		| sort --parallel=1 -k1,2 > cell_by_probe.txt
 
-	cellranger multi \\
-	--id=WGD \\
-	--csv=./sample.csv \\
-	--localcores ${task.cpus}
-	"""
+		python /src/probe_to_counts_mtx.py \\
+		--probe_count cell_by_probe.txt
+
+		gzip *tsv
+		gzip *mtx
+		"""
 }
 
+
+// RNA PROCESSING
+process MERGE_MODALITIES{
+	//Map reads with BWA mem
+	containerOptions "--bind ${params.ref_dir}:/ref/,${params.src_dir}:/src/"
+	cpus 50
+	label 'bc_multiome'
+
+	input:
+		tuple path(mtx),path(feat),path(barcodes)
+		path metadata
+		path cnv_meta
+	output:
+	script:
+		"""
+		Rscript /src/merge_modalities_rna_dna.R \\
+		-i . \\
+		-o ${params.outname} \\
+		-d ${cnv_meta} 
+		"""
+}
 workflow {
 	// SETTING UP VARIABLES
 		bwa_index = file("${params.ref_dir}/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa{,.amb,.ann,.bwt,.pac,.sa}" )
+		rna_bwa_index = file("${params.ref_dir}/probe_fa/Chromium_Human_Transcriptome_Probe_Set_v1.0_GRCh38-2020-A.fa{,.amb,.ann,.bwt,.pac,.sa}" )
 		def fasta_ref = Channel.value(params.ref_dir)
 		def outname = Channel.value(params.outname)
 		def icell8_data= Channel.fromPath(params.icell8_data)
@@ -251,10 +284,10 @@ workflow {
 
 	// BCL TO FASTQ PIPELINE 
 		fq = Channel.fromPath(params.sequencing_dir) | BCL_TO_FASTQ
-		(dna_fq, rna_fq) = DEMUX_FASTQ(fq,icell8_data,sample_layout)
+		(dna_fq, rna_fq, metadata) = DEMUX_FASTQ(fq,icell8_data,sample_layout)
 
 	// DNA ALIGNMENT AND SPLITTING CELLS AND CNV CALLING
-		clone_lists  = DNA_BWA_ALIGN(dna_fq, bwa_index, outname) \
+		cnv_meta = DNA_BWA_ALIGN(dna_fq, bwa_index, outname) \
 		| DNA_SPLIT_BAM \
 		| flatten
 		| DNA_BAM_MARKDUP \
@@ -263,14 +296,20 @@ workflow {
 		| DNA_CNV_CLONES
 
 	//RNA PROCESSING VIA CELLRANGER
-		RNA_CELLRANGER(rna_fq)
+		rna_matrix = RNA_BWA_ALIGN(rna_fq, rna_bwa_index, outname)
+
+	//MERGE MODALITIES
+		MERGE_MODALITIES(rna_matrix,cnv_meta)
+
+
+
 	
 }
 
 /*
-bsub -Is -W 36:00 -q long -n 10 -M 100 -R rusage[mem=100] /bin/bash
-
-sif="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src/copykit.sif"
+#bsub -Is -W 36:00 -q long -n 10 -M 100 -R rusage[mem=100] /bin/bash
+bsub -Is -W 6:00 -q interactive -n 1 -M 16 -R rusage[mem=16] /bin/bash 
+sif="/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src/bcl2fastq2.sif"
 
 module load singularity
 
@@ -279,13 +318,10 @@ singularity shell \
 --bind /rsrch4/scratch/genetics/rmulqueen \
 --bind /rsrch4/scratch/genetics/rmulqueen/wgd_work \
 --bind /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/src:/src/ \
+--bind /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/wgd/ref:/ref/ \
 $sif 
 
-cd /rsrch4/scratch/genetics/rmulqueen/wgd_work/a6/7e935b
+cd  /rsrch4/scratch/genetics/rmulqueen/wgd_work/a4/8ab7d2e00a03a499f04ad97f646ee4
 
 
 */
-
-
-
-

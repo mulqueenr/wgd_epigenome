@@ -122,6 +122,7 @@ From: ubuntu:latest
 	#mamba install -y -f conda-forge::biopython
 	mamba install -y -f anaconda::pandas
 	conda install -y -f conda-forge::biopython
+	conda install -y -f scipy
 
 %labels
 	Author Ryan Mulqueen
